@@ -11,24 +11,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def unify_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """把 akshare 可能的列名统一成英文"""
-    rename_map = {
-        "日期": "date",
-        "datetime": "date",
-        "开盘": "open",
-        "open": "open",
-        "收盘": "close",
-        "close": "close",
-        "最高": "high",
-        "high": "high",
-        "最低": "low",
-        "low": "low",
-        "成交量": "volume",
-        "volume": "volume",
-    }
-    return df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
-
 def calc_ma(series, n):
     return series.rolling(n).mean()
 
@@ -46,14 +28,16 @@ def calc_macd(close, fast=12, slow=26, signal=9):
     return diff, dea, bar, "up" if bar.iloc[-1] > bar.iloc[-2] else "down"
 
 @app.get("/tech")
-def get_tech(code: str = "510300"):
+def get_tech(code: str = "000001"):
     try:
         df = ak.stock_zh_a_hist(symbol=code, period="daily")
-        df = unify_cols(df).tail(60)
-        df["date"] = df["date"].astype(str)
+        if df.empty:
+            return {"error": "akshare returned empty dataframe (likely non-trading day)"}
+        df = df.tail(60)                       # 最近60根日K
+        df["日期"] = df["日期"].astype(str)    # 转字符串
 
-        close = df["close"]
-        volume = df["volume"]
+        close  = df["收盘"]
+        volume = df["成交量"]
 
         ma10 = calc_ma(close, 10)
         ma20 = calc_ma(close, 20)
@@ -67,9 +51,9 @@ def get_tech(code: str = "510300"):
 
         return {
             "code": code,
-            "update": df["date"].iloc[-1],
+            "update": df["日期"].iloc[-1],
             "main": {
-                "kline": df[["date", "open", "close", "high", "low"]].to_dict(orient="records"),
+                "kline": df[["日期", "开盘", "收盘", "最高", "最低"]].to_dict(orient="records"),
                 "ma10": ma10.round(2).tolist(),
                 "ma20": ma20.round(2).tolist(),
                 "ma60": ma60.round(2).tolist(),
